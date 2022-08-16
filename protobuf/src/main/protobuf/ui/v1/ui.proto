@@ -3,17 +3,14 @@ syntax = "proto3";
 package ui.v1;
 
 import "atc/v1/map.proto";
+import "atc/v1/airplane.proto";
 
-message UIState {}
+message UIState { repeated atc.v1.Airplane planes = 1; }
 
-message SetUIStateRequest {
-    UIState state = 1;
-}
+message SetUIStateRequest { UIState state = 1; }
 message SetUIStateResponse {}
 
-message SetMapRequest {
-  atc.v1.Map map = 1;
-}
+message SetMapRequest { atc.v1.Map map = 1; }
 message SetMapResponse {}
 
 service UIService {

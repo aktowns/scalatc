@@ -63,6 +63,14 @@ extension (services: Services[IO])
       )
       .void
 
+  def setState(state: UIState): IO[Unit] =
+    services.uiService
+      .setUIState(
+        SetUIStateRequest(Some(state)),
+        new Metadata()
+      )
+      .void
+
   def getAirplane(id: String): IO[Option[Airplane]] =
     services.airplaneService
       .getAirplane(
@@ -126,7 +134,9 @@ object Main extends IOApp.Simple:
       .evalScan(State.empty)((state, event) =>
         processEvents(services, event, state)
       )
-      //   .evalTap { state => IO { println(state) } }
+      .evalTap { state =>
+        services.setState(UIState(state.planes.values.toSeq))
+      }
       .compile
       .drain
   } yield evStream

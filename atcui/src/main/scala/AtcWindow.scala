@@ -29,8 +29,8 @@ import cats.Functor
 import scalafx.beans.property.ReadOnlyObjectProperty
 import scalafx.scene.Node
 import javafx.beans.value.ChangeListener
+import atc.v1.airplane.Airplane
 
-case class UIState()
 case class Config(gameMap: atc.v1.map.Map)
 
 object UIState:
@@ -42,6 +42,10 @@ object UIState:
   def setGameMap(map: Option[atc.v1.map.Map]) =
     gameMap.set(map)
     AtcWindow.onMapUpdate()
+
+  def setGameState(state: Option[ui.v1.ui.UIState]) =
+    gameState.set(state)
+    AtcWindow.onStateUpdate()
 
 class UIImpl(using ec: scala.concurrent.ExecutionContext)
     extends UIServiceGrpc.UIService:
@@ -63,7 +67,8 @@ object AtcWindow extends JFXApp3:
   val gameMap: ObjectProperty[Option[atc.v1.map.Map]] =
     ObjectProperty[Option[atc.v1.map.Map]](None)
 
-  val nodes: ObservableBuffer[Node] = ObservableBuffer()
+  val gameState: ObjectProperty[Option[ui.v1.ui.UIState]] =
+    ObjectProperty[Option[ui.v1.ui.UIState]](None)
 
   override def start(): Unit =
     Platform.runLater {
@@ -199,6 +204,36 @@ object AtcWindow extends JFXApp3:
                 }
               }
             }
+          },
+          new Pane {
+            gameState.onChange { (ob, old, ne: Option[UIState]) =>
+              children = ne
+                .map(_.planes)
+                .getOrElse(Vector.empty[Airplane])
+                .map { plane =>
+                  println(s"plane=${plane}")
+                  val cx =
+                    (gameMap.value
+                      .map(_.width)
+                      .getOrElse(0) / 2) + plane.point
+                      .map(_.x)
+                      .getOrElse(0)
+                  val cy =
+                    (gameMap.value
+                      .map(_.height)
+                      .getOrElse(0) / 2) - plane.point
+                      .map(_.x)
+                      .getOrElse(0)
+
+                  new Rectangle {
+                    layoutX = (cx * UNIT_SIZE) + UNIT_SIZE
+                    layoutY = (cy * UNIT_SIZE) + UNIT_SIZE
+                    width = UNIT_SIZE - 1
+                    height = UNIT_SIZE - 1
+                    fill = Color.Gold
+                  }
+                }
+            }
           }
         )
       }
@@ -207,4 +242,9 @@ object AtcWindow extends JFXApp3:
   def onMapUpdate(): Unit =
     Platform.runLater { () =>
       gameMap.update(UIState.gameMap.get())
+    }
+
+  def onStateUpdate(): Unit =
+    Platform.runLater { () =>
+      gameState.update(UIState.gameState.get())
     }
