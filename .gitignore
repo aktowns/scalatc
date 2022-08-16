@@ -1,0 +1,22 @@
+# sbt's target directories
+/target/
+/**/target/
+/project/**/target/
+
+# intellij
+/src/intellij*/*.iml
+/src/intellij*/*.ipr
+/src/intellij*/*.iws
+**/.cache
+/.idea
+/.settings
+
+# vscode
+/.vscode
+
+# metals
+.metals
+.bloop
+project/**/metals.sbt
+
+.bsp
