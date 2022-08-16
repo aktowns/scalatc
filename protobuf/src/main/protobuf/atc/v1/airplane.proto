@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package atc.v1;
+
+import "atc/v1/map.proto";
+import "atc/v1/tag.proto";
+
+message Airplane {
+  string id = 1;
+  Point point = 2;
+  repeated Node flight_plan = 3;
+  Tag tag = 4;
+}
+
+message GetAirplaneRequest {
+  string id = 1;
+}
+
+message GetAirplaneResponse {
+  Airplane airplane = 1;
+}
+
+message UpdateFlightPlanRequest {
+  string id = 1;
+  repeated Node flight_plan = 2;
+}
+
+message UpdateFlightPlanResponse {
+  oneof payload {
+    UpdateFlightPlanSuccess success = 1;
+    UpdateFlightPlanError error = 2;
+  }
+}
+
+message UpdateFlightPlanSuccess {}
+message UpdateFlightPlanError {
+  enum ValidationError {
+    VALIDATION_ERROR_UNSPECIFIED = 0;
+    VALIDATION_ERROR_NODE_OUTSIDE_MAP = 1;
+    VALIDATION_ERROR_INVALID_STEP = 2;
+    VALIDATION_ERROR_SHARP_TURN = 3;
+    VALIDATION_ERROR_INVALID_START = 4;
+    VALIDATION_ERROR_RESTRICTED_NODE = 5;
+  }
+  repeated ValidationError errors = 1;
+}
+
+service AirplaneService {
+  rpc GetAirplane(GetAirplaneRequest) returns (GetAirplaneResponse);
+  rpc UpdateFlightPlan(UpdateFlightPlanRequest) returns (UpdateFlightPlanResponse);
+}

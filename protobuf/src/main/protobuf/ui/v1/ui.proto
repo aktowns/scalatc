@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package ui.v1;
+
+import "atc/v1/map.proto";
+
+message UIState {}
+
+message SetUIStateRequest {
+    UIState state = 1;
+}
+message SetUIStateResponse {}
+
+message SetMapRequest {
+  atc.v1.Map map = 1;
+}
+message SetMapResponse {}
+
+service UIService {
+  rpc SetMap(SetMapRequest) returns (SetMapResponse);
+  rpc SetUIState(SetUIStateRequest) returns (SetUIStateResponse);
+}

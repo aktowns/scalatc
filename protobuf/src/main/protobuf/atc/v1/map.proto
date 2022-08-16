@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package atc.v1;
+
+import "atc/v1/tag.proto";
+
+message Airport {
+  Node node = 1;
+  Tag tag = 2;
+}
+
+message Map {
+  repeated Airport airports = 1;
+  repeated Node routing_grid = 2;
+  uint32 width = 3;
+  uint32 height = 4;
+}
+
+message Node {
+  int32 longitude = 1;
+  int32 latitude = 2;
+  bool restricted = 3;
+}
+
+message Point {
+  int32 x = 1;
+  int32 y = 2;
+}
+
+message GetMapRequest {}
+message GetMapResponse {
+  Map map = 1;
+}
+
+message NodeToPointRequest {
+  Node node = 1;
+}
+
+message NodeToPointResponse {
+  Point point = 1;
+}
+
+service MapService {
+  rpc GetMap(GetMapRequest) returns (GetMapResponse);
+  rpc NodeToPoint(NodeToPointRequest) returns (NodeToPointResponse);
+}

@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package atc.v1;
+
+import "atc/v1/airplane.proto";
+import "atc/v1/map.proto";
+
+message AirplaneCollided {
+  string id1 = 1;
+  string id2 = 2;
+}
+
+message AirplaneDetected {
+  Airplane airplane = 1;
+}
+
+message AirplaneLanded {
+  string id = 1;
+}
+
+message AirplaneMoved {
+  string id = 1;
+  Point point = 2;
+}
+
+message FlightPlanUpdated {
+  string id = 1;
+  repeated Node flight_plan = 2;
+}
+
+message LandingAborted {
+  string id = 1;
+}
+
+message GameStarted {
+  Map map = 1;
+}
+
+message GameStopped {
+  uint32 score = 1;
+}
+
+message StreamRequest {}
+
+message StreamResponse {
+  oneof event {
+    AirplaneCollided airplane_collided = 1;
+    AirplaneDetected airplane_detected = 2;
+    AirplaneLanded airplane_landed = 3;
+    AirplaneMoved airplane_moved = 4;
+    FlightPlanUpdated flight_plan_updated = 5;
+    LandingAborted landing_aborted = 6;
+    GameStarted game_started = 7;
+    GameStopped game_stopped = 8;
+  }
+}
+
+service EventService {
+  rpc Stream(StreamRequest) returns (stream StreamResponse) {}
+}
