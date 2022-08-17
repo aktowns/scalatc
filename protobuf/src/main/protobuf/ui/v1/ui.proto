@@ -10,7 +10,15 @@ message UIState { repeated atc.v1.Airplane planes = 1; }
 message SetUIStateRequest { UIState state = 1; }
 message SetUIStateResponse {}
 
-message SetMapRequest { atc.v1.Map map = 1; }
+message NodePoint {
+  atc.v1.Node node = 1;
+  atc.v1.Point point = 2;
+}
+
+message SetMapRequest {
+  atc.v1.Map map = 1;
+  repeated NodePoint lookup = 2;
+}
 message SetMapResponse {}
 
 service UIService {

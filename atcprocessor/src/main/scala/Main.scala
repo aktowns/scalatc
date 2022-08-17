@@ -1,17 +1,19 @@
 import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder
+import io.grpc.netty.shaded.io.netty.channel.ChannelOption
 import fs2.grpc.syntax.all.*
 import cats.effect.*
 import cats.implicits.*
-import io.grpc.ManagedChannel
-import io.grpc.Metadata
-import io.grpc.netty.shaded.io.netty.channel.ChannelOption
-import atc.v1.game.*
-import atc.v1.atc.*
-import atc.v1.event.*
-import atc.v1.map.*
-import atc.v1.airplane.*
-import ui.v1.ui.*
+import io.grpc.{ManagedChannel, Metadata}
 import monocle.syntax.all.*
+import scala.concurrent.duration.*
+
+import atc.v1.*
+// import atc.v1.game.*
+// import atc.v1.atc.*
+// import atc.v1.event.*
+// import atc.v1.map.*
+// import atc.v1.airplane.*
+import ui.v1.*
 
 case class Services[F[_]](
     atcService: AtcServiceFs2Grpc[F, Metadata],
@@ -55,10 +57,15 @@ extension (services: Services[IO])
       )
       .map(_.map)
 
-  def setMap(gameMap: Map): IO[Unit] =
+  def nodeToPoint(node: Node): IO[Option[Point]] =
+    services.mapService
+      .nodeToPoint(NodeToPointRequest(Some(node)), new Metadata())
+      .map(_.point)
+
+  def setMap(gameMap: Map, nodePoints: Seq[NodePoint]): IO[Unit] =
     services.uiService
       .setMap(
-        SetMapRequest(Some(gameMap)),
+        SetMapRequest(Some(gameMap), nodePoints),
         new Metadata()
       )
       .void
@@ -128,12 +135,17 @@ object Main extends IOApp.Simple:
   def runProgram(services: Services[IO]): IO[Unit] = for {
     version <- services.getVersion
     gameMap <- services.getMap.map(_.get)
-    _ <- services.setMap(gameMap)
+    nps <- gameMap.routingGrid
+      .traverse { node =>
+        services.nodeToPoint(node).map(point => NodePoint(Some(node), point))
+      }
+    _ <- services.setMap(gameMap, nps)
     _ <- services.startGame
     evStream <- services.eventStream
       .evalScan(State.empty)((state, event) =>
         processEvents(services, event, state)
       )
+      .debounce(1.second)
       .evalTap { state =>
         services.setState(UIState(state.planes.values.toSeq))
       }

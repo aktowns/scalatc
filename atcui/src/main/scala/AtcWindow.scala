@@ -11,11 +11,12 @@ import scalafx.scene.shape.Circle
 import scalafx.scene.layout.Pane
 import scalafx.application.Platform
 
-import ui.v1.ui.*
-import scala.concurrent.Future
+import ui.v1.*
+import atc.v1.Airplane
+import atc.v1.Point as GamePoint
+import atc.v1.Map as GameMap
+import atc.v1.Node as GameNode
 
-import java.util.concurrent.Semaphore
-import java.util.concurrent.atomic.AtomicReference
 import io.grpc.ServerBuilder
 import scalafx.Includes._
 import scalafx.scene.text.Font
@@ -25,50 +26,23 @@ import javafx.beans.property.ListProperty
 import scalafx.beans.binding.Bindings
 import scalafx.collections.ObservableBuffer
 import scalafx.beans.property.{BooleanProperty, ObjectProperty}
-import cats.Functor
 import scalafx.beans.property.ReadOnlyObjectProperty
 import scalafx.scene.Node
 import javafx.beans.value.ChangeListener
-import atc.v1.airplane.Airplane
-
-case class Config(gameMap: atc.v1.map.Map)
-
-object UIState:
-  val gameMap: AtomicReference[Option[atc.v1.map.Map]] =
-    AtomicReference(None)
-  val gameState: AtomicReference[Option[ui.v1.ui.UIState]] =
-    AtomicReference(None)
-
-  def setGameMap(map: Option[atc.v1.map.Map]) =
-    gameMap.set(map)
-    AtcWindow.onMapUpdate()
-
-  def setGameState(state: Option[ui.v1.ui.UIState]) =
-    gameState.set(state)
-    AtcWindow.onStateUpdate()
-
-class UIImpl(using ec: scala.concurrent.ExecutionContext)
-    extends UIServiceGrpc.UIService:
-  override def setMap(request: SetMapRequest): Future[SetMapResponse] =
-    println("Updating map")
-    UIState.setGameMap(request.map)
-    Future.successful(SetMapResponse.defaultInstance)
-
-  override def setUIState(
-      request: SetUIStateRequest
-  ): Future[SetUIStateResponse] =
-    println("Updating GameState")
-    UIState.gameState.set(request.state)
-    Future.successful(SetUIStateResponse.defaultInstance)
 
 object AtcWindow extends JFXApp3:
-  val UNIT_SIZE = 50
+  val UNIT_SIZE = 32
+  val PADDING = 32
+  val SCALING = 2
 
-  val gameMap: ObjectProperty[Option[atc.v1.map.Map]] =
-    ObjectProperty[Option[atc.v1.map.Map]](None)
+  val gameMap: ObjectProperty[Option[GameMap]] =
+    ObjectProperty[Option[GameMap]](None)
 
-  val gameState: ObjectProperty[Option[ui.v1.ui.UIState]] =
-    ObjectProperty[Option[ui.v1.ui.UIState]](None)
+  val nodePoints: ObjectProperty[Option[Map[GameNode, GamePoint]]] =
+    ObjectProperty[Option[Map[GameNode, GamePoint]]](None)
+
+  val gameState: ObjectProperty[Option[UIState]] =
+    ObjectProperty[Option[UIState]](None)
 
   override def start(): Unit =
     Platform.runLater {
@@ -115,14 +89,18 @@ object AtcWindow extends JFXApp3:
                   () =>
                     ((gameMap.value
                       .map(_.width)
-                      .getOrElse(0) * UNIT_SIZE) + (UNIT_SIZE * 2)),
+                      .getOrElse(
+                        0
+                      ) * (UNIT_SIZE * SCALING)) + ((PADDING * SCALING) * 2)),
                   gameMap
                 )
                 height <== createDoubleBinding(
                   () =>
                     ((gameMap.value
                       .map(_.height)
-                      .getOrElse(0) * UNIT_SIZE) + (UNIT_SIZE * 2)),
+                      .getOrElse(
+                        0
+                      ) * (UNIT_SIZE * SCALING)) + ((PADDING * SCALING) * 2)),
                   gameMap
                 )
                 visible <== createBooleanBinding(
@@ -133,8 +111,11 @@ object AtcWindow extends JFXApp3:
               new Text {
                 text <== createStringBinding(
                   () =>
-                    s"Client connected, ${gameMap.value.map(_.routingGrid.length).getOrElse(0)} nodes updated",
-                  gameMap
+                    s"Client connected, ${gameMap.value
+                        .map(_.routingGrid.length)
+                        .getOrElse(0)} nodes updated, ${gameState.value.map(_.planes.length).getOrElse(0)} planes tracked",
+                  gameMap,
+                  gameState
                 )
                 fill = Color.White
                 layoutX = 10
@@ -150,29 +131,50 @@ object AtcWindow extends JFXApp3:
             routingGrid.onChange { (ob, old, ne) =>
               children.clear()
               children ++= (ne.flatMap { node =>
-                val cx =
-                  (gameMap.value.map(_.width).getOrElse(0) / 2) + node.longitude
-                val cy =
-                  (gameMap.value.map(_.height).getOrElse(0) / 2) - node.latitude
+                val xOff = gameMap.value.map(_.width).getOrElse(0) / 2
+                val yOff = gameMap.value.map(_.height).getOrElse(0) / 2
+
+                val cx = xOff + node.longitude
+                val cy = yOff - node.latitude
+
+                val point = nodePoints.value.get(node)
+                val px =
+                  ((PADDING * SCALING) + (xOff * (UNIT_SIZE * SCALING))) + (point.x * SCALING)
+                val py =
+                  ((PADDING * SCALING) + (yOff * (UNIT_SIZE * SCALING))) - (point.y * SCALING)
+
                 println(
-                  s"latitude=${node.latitude} longitude=${node.longitude} cx=${cx} cy=${cy} restricted=${node.restricted}"
+                  s"latitude=${node.latitude} longitude=${node.longitude} cx=${cx} cy=${cy} restricted=${node.restricted} point=${point} px=${px} py=${py}"
                 )
 
                 Seq(
                   new Rectangle {
-                    layoutX = (cx * UNIT_SIZE) + UNIT_SIZE
-                    layoutY = (cy * UNIT_SIZE) + UNIT_SIZE
-                    width = UNIT_SIZE - 1
-                    height = UNIT_SIZE - 1
+                    layoutX = px - (UNIT_SIZE / 2)
+                    layoutY = py - (UNIT_SIZE / 2)
+                    // layoutX = (cx * UNIT_SIZE) + UNIT_SIZE
+                    // layoutY = (cy * UNIT_SIZE) + UNIT_SIZE
+                    width = UNIT_SIZE
+                    height = UNIT_SIZE
                     fill =
                       if node.restricted then Color.Red
                       else Color.rgb(20, 20, 20)
                   },
+                  new Rectangle {
+                    layoutX = px
+                    layoutY = py
+                    // layoutX = (cx * UNIT_SIZE) + UNIT_SIZE
+                    // layoutY = (cy * UNIT_SIZE) + UNIT_SIZE
+                    width = 2
+                    height = 2
+                    fill = Color.Gold
+                  },
                   new Text {
-                    layoutX = (cx * UNIT_SIZE) + UNIT_SIZE + (UNIT_SIZE / 2) - 5
-                    layoutY = (cy * UNIT_SIZE) + UNIT_SIZE + (UNIT_SIZE / 2) - 5
+                    layoutX =
+                      px // (cx * UNIT_SIZE) + UNIT_SIZE + (UNIT_SIZE / 2) - 5
+                    layoutY =
+                      py - 5 // (cy * UNIT_SIZE) + UNIT_SIZE + (UNIT_SIZE / 2) - 5
                     text = s"${node.latitude}, ${node.longitude}"
-
+                    font = Font.apply(10)
                     fill =
                       if (node.latitude == 0 || node.longitude == 0) then
                         Color.LightGreen
@@ -208,30 +210,59 @@ object AtcWindow extends JFXApp3:
           new Pane {
             gameState.onChange { (ob, old, ne: Option[UIState]) =>
               children = ne
-                .map(_.planes)
+                .map(
+                  _.planes ++ Seq(
+                    Airplane(
+                      "AT-SANITY",
+                      Some(
+                        GamePoint(
+                          gameMap.value
+                            .map(_.width)
+                            .getOrElse(0) / 2,
+                          gameMap.value
+                            .map(_.height)
+                            .getOrElse(0) / 2
+                        )
+                      )
+                    )
+                  )
+                )
                 .getOrElse(Vector.empty[Airplane])
-                .map { plane =>
+                .flatMap { plane =>
                   println(s"plane=${plane}")
-                  val cx =
-                    (gameMap.value
-                      .map(_.width)
-                      .getOrElse(0) / 2) + plane.point
-                      .map(_.x)
-                      .getOrElse(0)
-                  val cy =
-                    (gameMap.value
-                      .map(_.height)
-                      .getOrElse(0) / 2) - plane.point
-                      .map(_.x)
-                      .getOrElse(0)
+                  val xOff = gameMap.value.map(_.width).getOrElse(0) / 2
+                  val yOff = gameMap.value.map(_.height).getOrElse(0) / 2
 
-                  new Rectangle {
-                    layoutX = (cx * UNIT_SIZE) + UNIT_SIZE
-                    layoutY = (cy * UNIT_SIZE) + UNIT_SIZE
-                    width = UNIT_SIZE - 1
-                    height = UNIT_SIZE - 1
-                    fill = Color.Gold
-                  }
+                  val cx = (gameMap.value
+                    .map(_.width)
+                    .getOrElse(0) / 2) + plane.point.map(_.y).getOrElse(0)
+                  val cy = (gameMap.value
+                    .map(_.height)
+                    .getOrElse(0) / 2) - plane.point.map(_.x).getOrElse(0)
+
+                  val point = plane.point.get
+                  val px = (PADDING + (xOff * UNIT_SIZE)) + point.x
+                  val py = (PADDING + (yOff * UNIT_SIZE)) - point.y
+
+                  Seq(
+                    new Rectangle {
+                      layoutX = px
+                      layoutY = py
+                      width = 4
+                      height = 4
+                      fill =
+                        if plane.tag.isTagRed then Color.Orange
+                        else Color.AliceBlue
+                    },
+                    new Text {
+                      text = plane.id
+                      layoutX = px
+                      layoutY = py - 5
+                      fill =
+                        if plane.tag.isTagRed then Color.Orange
+                        else Color.AliceBlue
+                    }
+                  )
                 }
             }
           }
@@ -241,10 +272,19 @@ object AtcWindow extends JFXApp3:
 
   def onMapUpdate(): Unit =
     Platform.runLater { () =>
-      gameMap.update(UIState.gameMap.get())
+      gameMap.update(WindowState.gameMap.get())
+    }
+
+  def onNodePointUpdate(): Unit =
+    Platform.runLater { () =>
+      nodePoints.update(
+        WindowState.nodePoints
+          .get()
+          .map(_.map(np => (np.node.get, np.point.get)).toMap)
+      )
     }
 
   def onStateUpdate(): Unit =
     Platform.runLater { () =>
-      gameState.update(UIState.gameState.get())
+      gameState.update(WindowState.gameState.get())
     }
