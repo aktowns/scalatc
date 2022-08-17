@@ -58,7 +58,7 @@ object AtcWindow extends JFXApp3:
       println("Server started, listening on 50051")
     }
 
-    val routingGrid = createObjectBinding(
+    val rroutingGrid = createObjectBinding(
       () => gameMap.value.map(_.routingGrid).getOrElse(Vector.empty),
       gameMap
     )
@@ -71,6 +71,19 @@ object AtcWindow extends JFXApp3:
       scene = new Scene {
         fill = Color.rgb(38, 38, 38)
         content = Seq(
+          new controls.ATCMap {
+            mapWidth <== createDoubleBinding(
+              () =>
+                ((gameMap.value
+                  .map(_.width)
+                  .getOrElse(
+                    1
+                  ) * (UNIT_SIZE * SCALING)) + ((PADDING * SCALING) * 2)),
+              gameMap
+            )
+            mapHeight = 100
+            routingGrid = Seq(GameNode(1, 1))
+          },
           new Pane {
             children = Seq(
               new Text {
@@ -128,7 +141,7 @@ object AtcWindow extends JFXApp3:
             )
           },
           new Pane {
-            routingGrid.onChange { (ob, old, ne) =>
+            rroutingGrid.onChange { (ob, old, ne) =>
               children.clear()
               children ++= (ne.flatMap { node =>
                 val xOff = gameMap.value.map(_.width).getOrElse(0) / 2
