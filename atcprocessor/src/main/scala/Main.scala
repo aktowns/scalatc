@@ -6,14 +6,16 @@ import cats.implicits.*
 import io.grpc.{ManagedChannel, Metadata}
 import monocle.syntax.all.*
 import scala.concurrent.duration.*
-import cats.Order
 
 import atc.v1.*
 import ui.v1.*
 
-case class State(planes: scala.collection.immutable.Map[String, Airplane])
+case class State(
+    planes: scala.collection.immutable.Map[String, Airplane],
+    isRunning: Boolean
+)
 object State:
-  def empty: State = State(scala.collection.immutable.Map.empty)
+  def empty: State = State(scala.collection.immutable.Map.empty, true)
 
 object Main extends IOApp.Simple:
   def processEvents(
@@ -24,11 +26,20 @@ object Main extends IOApp.Simple:
     event match
       case StreamResponse.Event.Empty => IO.pure(state)
       case StreamResponse.Event.GameStarted(value) =>
-        IO { println("Game started"); state }
+        IO {
+          println("Game started")
+          state.focus(_.isRunning).replace(true)
+        }
       case StreamResponse.Event.GameStopped(value) =>
-        IO { println("Game stopped"); state }
+        IO {
+          println("Game stopped")
+          state.focus(_.isRunning).replace(false)
+        }
       case StreamResponse.Event.AirplaneCollided(value) =>
-        IO { println(value); state }
+        IO {
+          println(value)
+          state.focus(_.isRunning).replace(false)
+        }
       case StreamResponse.Event.AirplaneDetected(value) =>
         IO {
           val plane = value.airplane.get
@@ -53,27 +64,6 @@ object Main extends IOApp.Simple:
       case StreamResponse.Event.LandingAborted(value) =>
         IO { println(value); state }
 
-  def simpleFlightPlanner(
-      airplane: Airplane,
-      airports: Seq[Airport],
-      grid: Seq[NodePoint]
-  ): IO[Seq[Node]] = IO {
-    println(
-      s"Flight ${airplane.id} is looking to go to ${airplane.tag} airport"
-    )
-    val lookupPoint = grid.map(np => (np.point.get, np.node.get)).toMap
-    val lookupNode = grid.map(np => (np.node.get, np.point.get)).toMap
-    val targetAirport = airports.find(_.tag == airplane.tag).get
-
-    val cX = lookupPoint.keys.minBy(v => math.abs(v.x - airplane.point.get.x))
-    val cY = lookupPoint.keys.minBy(v => math.abs(v.y - airplane.point.get.y))
-
-    val start = airplane.point.get
-    val end = lookupNode(targetAirport.node.get)
-
-    Seq.range(start, end)(pointOrd).map(lookupPoint)
-  }
-
   def runProgram(services: Services[IO]): IO[Unit] = for {
     version <- services.getVersion
     gameMap <- services.getMap.map(_.get)
@@ -87,7 +77,16 @@ object Main extends IOApp.Simple:
       .evalScan(State.empty)((state, event) =>
         processEvents(services, event, state)
       )
-      .debounce(500.milliseconds)
+      .debounce(100.milliseconds)
+      .evalTap { state =>
+        if state.isRunning then
+          state.planes.values.toVector.traverse_ { plane =>
+            SimpleFlightPlanner(plane, gameMap.airports, nps).flatMap { plan =>
+              services.updateFlightPlan(plane.id, plan)
+            }
+          }
+        else IO.unit
+      }
       .evalTap { state =>
         services.setState(UIState(state.planes.values.toSeq))
       }
