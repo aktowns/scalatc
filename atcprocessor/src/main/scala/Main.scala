@@ -6,93 +6,10 @@ import cats.implicits.*
 import io.grpc.{ManagedChannel, Metadata}
 import monocle.syntax.all.*
 import scala.concurrent.duration.*
+import cats.Order
 
 import atc.v1.*
-// import atc.v1.game.*
-// import atc.v1.atc.*
-// import atc.v1.event.*
-// import atc.v1.map.*
-// import atc.v1.airplane.*
 import ui.v1.*
-
-case class Services[F[_]](
-    atcService: AtcServiceFs2Grpc[F, Metadata],
-    gameService: GameServiceFs2Grpc[F, Metadata],
-    eventService: EventServiceFs2Grpc[F, Metadata],
-    mapService: MapServiceFs2Grpc[F, Metadata],
-    airplaneService: AirplaneServiceFs2Grpc[F, Metadata],
-    uiService: UIServiceFs2Grpc[F, Metadata]
-)
-
-extension (services: Services[IO])
-  def getVersion: IO[Option[Version]] =
-    services.atcService
-      .getVersion(
-        GetVersionRequest.defaultInstance,
-        new Metadata()
-      )
-      .map(_.version)
-
-  def getGameState: IO[GetGameStateResponse.GameState] =
-    services.gameService
-      .getGameState(
-        GetGameStateRequest.defaultInstance,
-        new Metadata()
-      )
-      .map(_.gameState)
-
-  def startGame: IO[Unit] =
-    services.gameService
-      .startGame(
-        StartGameRequest.defaultInstance,
-        new Metadata()
-      )
-      .void
-
-  def getMap: IO[Option[Map]] =
-    services.mapService
-      .getMap(
-        GetMapRequest.defaultInstance,
-        new Metadata()
-      )
-      .map(_.map)
-
-  def nodeToPoint(node: Node): IO[Option[Point]] =
-    services.mapService
-      .nodeToPoint(NodeToPointRequest(Some(node)), new Metadata())
-      .map(_.point)
-
-  def setMap(gameMap: Map, nodePoints: Seq[NodePoint]): IO[Unit] =
-    services.uiService
-      .setMap(
-        SetMapRequest(Some(gameMap), nodePoints),
-        new Metadata()
-      )
-      .void
-
-  def setState(state: UIState): IO[Unit] =
-    services.uiService
-      .setUIState(
-        SetUIStateRequest(Some(state)),
-        new Metadata()
-      )
-      .void
-
-  def getAirplane(id: String): IO[Option[Airplane]] =
-    services.airplaneService
-      .getAirplane(
-        GetAirplaneRequest(id),
-        new Metadata()
-      )
-      .map(_.airplane)
-
-  def eventStream: fs2.Stream[IO, StreamResponse.Event] =
-    services.eventService
-      .stream(
-        StreamRequest.defaultInstance,
-        new Metadata()
-      )
-      .map(_.event)
 
 case class State(planes: scala.collection.immutable.Map[String, Airplane])
 object State:
@@ -128,9 +45,34 @@ object Main extends IOApp.Simple:
             .replace(value.point)
         }
       case StreamResponse.Event.FlightPlanUpdated(value) =>
-        IO { println(value); state }
+        IO {
+          state
+            .focus(_.planes.index(value.id).as[Airplane].flightPlan)
+            .replace(value.flightPlan)
+        }
       case StreamResponse.Event.LandingAborted(value) =>
         IO { println(value); state }
+
+  def simpleFlightPlanner(
+      airplane: Airplane,
+      airports: Seq[Airport],
+      grid: Seq[NodePoint]
+  ): IO[Seq[Node]] = IO {
+    println(
+      s"Flight ${airplane.id} is looking to go to ${airplane.tag} airport"
+    )
+    val lookupPoint = grid.map(np => (np.point.get, np.node.get)).toMap
+    val lookupNode = grid.map(np => (np.node.get, np.point.get)).toMap
+    val targetAirport = airports.find(_.tag == airplane.tag).get
+
+    val cX = lookupPoint.keys.minBy(v => math.abs(v.x - airplane.point.get.x))
+    val cY = lookupPoint.keys.minBy(v => math.abs(v.y - airplane.point.get.y))
+
+    val start = airplane.point.get
+    val end = lookupNode(targetAirport.node.get)
+
+    Seq.range(start, end)(pointOrd).map(lookupPoint)
+  }
 
   def runProgram(services: Services[IO]): IO[Unit] = for {
     version <- services.getVersion
@@ -145,7 +87,7 @@ object Main extends IOApp.Simple:
       .evalScan(State.empty)((state, event) =>
         processEvents(services, event, state)
       )
-      .debounce(1.second)
+      .debounce(500.milliseconds)
       .evalTap { state =>
         services.setState(UIState(state.planes.values.toSeq))
       }
