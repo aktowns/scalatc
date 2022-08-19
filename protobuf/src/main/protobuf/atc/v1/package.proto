@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+import "scalapb/scalapb.proto";
+
+package atc.v1;
+
+option (scalapb.options) = {
+  scope : PACKAGE
+  flat_package : true
+  single_file : true
+  lenses : false
+  getters : false
+  no_default_values_in_constructor : true
+  preserve_unknown_fields : false
+  enum_value_naming : CAMEL_CASE
+};

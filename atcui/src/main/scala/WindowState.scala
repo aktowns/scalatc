@@ -10,6 +10,8 @@ object WindowState:
     AtomicReference(None)
   val nodePoints: AtomicReference[Option[Seq[NodePoint]]] =
     AtomicReference(None)
+  val proposedPoints: AtomicReference[Option[Seq[Seq[NodePoint]]]] =
+    AtomicReference(None)
   val gameState: AtomicReference[Option[UIState]] =
     AtomicReference(None)
 
@@ -20,6 +22,10 @@ object WindowState:
   def setNodePoints(nps: Option[Seq[NodePoint]]) =
     nodePoints.set(nps)
     AtcWindow.onNodePointUpdate()
+
+  def setProposedPoints(nps: Option[Seq[Seq[NodePoint]]]) =
+    proposedPoints.set(nps)
+    AtcWindow.onProposedPointUpdate()
 
   def setGameState(state: Option[UIState]) =
     gameState.set(state)

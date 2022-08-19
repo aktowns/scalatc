@@ -2,30 +2,24 @@ import scalafx.application.JFXApp3
 import scalafx.geometry.Insets
 import scalafx.scene.Scene
 import scalafx.scene.effect.DropShadow
-import scalafx.scene.layout.HBox
+import scalafx.scene.layout.{HBox, Pane}
 import scalafx.scene.paint.Color.*
 import scalafx.scene.paint.*
-import scalafx.scene.text.Text
-import scalafx.scene.shape.Rectangle
-import scalafx.scene.shape.Circle
-import scalafx.scene.layout.Pane
+import scalafx.scene.Node
+import scalafx.scene.text.{Font, Text}
+import scalafx.scene.shape.{Rectangle, Circle}
 import scalafx.application.Platform
+import scalafx.Includes.*
+import scalafx.beans.value.ObservableValue
+import scalafx.beans.Observable
+import scalafx.beans.binding.{Bindings, ObjectBinding}
+import scalafx.collections.ObservableBuffer
+import scalafx.beans.property.{BooleanProperty, ObjectProperty, ReadOnlyObjectProperty}
 import ui.v1.*
 import atc.v1.Airplane
 import atc.v1.Point as GamePoint
 import atc.v1.Map as GameMap
 import atc.v1.Node as GameNode
-import scalafx.Includes.*
-import scalafx.scene.text.Font
-import scalafx.beans.value.ObservableValue
-import scalafx.beans.Observable
-import javafx.beans.property.ListProperty
-import scalafx.beans.binding.{Bindings, ObjectBinding}
-import scalafx.collections.ObservableBuffer
-import scalafx.beans.property.{BooleanProperty, ObjectProperty}
-import scalafx.beans.property.ReadOnlyObjectProperty
-import scalafx.scene.Node
-import javafx.beans.value.ChangeListener
 import cats.implicits.*
 
 object AtcWindow extends JFXApp3:
@@ -34,6 +28,9 @@ object AtcWindow extends JFXApp3:
 
   val nodePoints: ObjectProperty[Option[Map[GameNode, GamePoint]]] =
     ObjectProperty[Option[Map[GameNode, GamePoint]]](None)
+
+  val proposedPoints: ObjectProperty[Option[Seq[Seq[NodePoint]]]] =
+    ObjectProperty[Option[Seq[Seq[NodePoint]]]](None)
 
   val gameState: ObjectProperty[Option[UIState]] =
     ObjectProperty[Option[UIState]](None)
@@ -64,9 +61,7 @@ object AtcWindow extends JFXApp3:
         gameMap.value
           .flatMap { nmap =>
             nmap.airports.traverse { airport =>
-              val maybePoint = nodePoints.value.flatMap(points =>
-                airport.node.flatMap(points.get)
-              )
+              val maybePoint = nodePoints.value.flatMap(points => airport.node.flatMap(points.get))
               maybePoint.map(point => (airport, point))
             }
           }
@@ -78,6 +73,11 @@ object AtcWindow extends JFXApp3:
     val airplanesInp = createObjectBinding(
       () => gameState.value.map(_.planes).getOrElse(Seq.empty),
       gameState
+    )
+
+    val proposedInp = createObjectBinding(
+      () => proposedPoints.value.getOrElse(Seq.empty),
+      proposedPoints
     )
 
     val hasMap = createBooleanBinding(
@@ -122,6 +122,7 @@ object AtcWindow extends JFXApp3:
                 routingGrid <== routingGridInp
                 airports <== airportsInp
                 airplanes <== airplanesInp
+                proposed <== proposedInp
                 unitSize = 32
                 scaling = 2
               },
@@ -159,7 +160,15 @@ object AtcWindow extends JFXApp3:
       nodePoints.update(
         WindowState.nodePoints
           .get()
-          .map(_.map(np => (np.node.get, np.point.get)).toMap)
+          .map(_.map(np => (np.node, np.point)).toMap)
+      )
+    }
+
+  def onProposedPointUpdate(): Unit =
+    Platform.runLater { () =>
+      proposedPoints.update(
+        WindowState.proposedPoints
+          .get()
       )
     }
 

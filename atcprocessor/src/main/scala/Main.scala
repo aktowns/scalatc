@@ -18,77 +18,55 @@ object State:
   def empty: State = State(scala.collection.immutable.Map.empty, true)
 
 object Main extends IOApp.Simple:
-  def processEvents(
-      services: Services[IO],
-      event: StreamResponse.Event,
-      state: State
-  ): IO[State] =
+  private def processEvents(state: State, event: StreamResponse.Event): State =
     event match
-      case StreamResponse.Event.Empty => IO.pure(state)
-      case StreamResponse.Event.GameStarted(value) =>
-        IO {
-          println("Game started")
-          state.focus(_.isRunning).replace(true)
-        }
-      case StreamResponse.Event.GameStopped(value) =>
-        IO {
-          println("Game stopped")
-          state.focus(_.isRunning).replace(false)
-        }
-      case StreamResponse.Event.AirplaneCollided(value) =>
-        IO {
-          println(value)
-          state.focus(_.isRunning).replace(false)
-        }
+      case StreamResponse.Event.Empty                   => state
+      case StreamResponse.Event.GameStarted(value)      => state.focus(_.isRunning).replace(true)
+      case StreamResponse.Event.GameStopped(value)      => state.focus(_.isRunning).replace(false)
+      case StreamResponse.Event.AirplaneCollided(value) => state.focus(_.isRunning).replace(false)
       case StreamResponse.Event.AirplaneDetected(value) =>
-        IO {
-          val plane = value.airplane.get
-          state.focus(_.planes).modify(_ + (plane.id -> plane))
-        }
-      case StreamResponse.Event.AirplaneLanded(value) =>
-        IO {
-          state.focus(_.planes.at(value.id)).replace(None)
-        }
+        value.airplane match
+          case Some(plane) => state.focus(_.planes).modify(_ + (plane.id -> plane))
+          case None        => state
+      case StreamResponse.Event.AirplaneLanded(value) => state.focus(_.planes.at(value.id)).replace(None)
       case StreamResponse.Event.AirplaneMoved(value) =>
-        IO {
-          state
-            .focus(_.planes.index(value.id).as[Airplane].point)
-            .replace(value.point)
-        }
+        state
+          .focus(_.planes.index(value.id).as[Airplane].point)
+          .replace(value.point)
       case StreamResponse.Event.FlightPlanUpdated(value) =>
-        IO {
-          state
-            .focus(_.planes.index(value.id).as[Airplane].flightPlan)
-            .replace(value.flightPlan)
-        }
-      case StreamResponse.Event.LandingAborted(value) =>
-        IO { println(value); state }
+        state
+          .focus(_.planes.index(value.id).as[Airplane].flightPlan)
+          .replace(value.flightPlan)
+      case StreamResponse.Event.LandingAborted(value) => state
 
   def runProgram(services: Services[IO]): IO[Unit] = for {
     version <- services.getVersion
-    gameMap <- services.getMap.map(_.get)
+    gameMap <- services.getMap.flatMap(_.fold(IO.raiseError(new RuntimeException("Failed to get map")))(_.pure))
     nps <- gameMap.routingGrid
       .traverse { node =>
-        services.nodeToPoint(node).map(point => NodePoint(Some(node), point))
+        services.nodeToPoint(node).map { maybePoint =>
+          maybePoint.map(point => NodePoint(node, point))
+        }
       }
-    _ <- services.setMap(gameMap, nps)
+    _ <- services.setMap(gameMap, nps.flatten)
     _ <- services.startGame
     evStream <- services.eventStream
-      .evalScan(State.empty)((state, event) =>
-        processEvents(services, event, state)
-      )
+      .scan(State.empty)(processEvents)
       .debounce(100.milliseconds)
-      .evalTap { state =>
+      .evalMap { state =>
         if state.isRunning then
-          state.planes.values.toVector.traverse_ { plane =>
-            SimpleFlightPlanner(plane, gameMap.airports, nps).flatMap { plan =>
-              services.updateFlightPlan(plane.id, plan)
+          state.planes.values.toSeq
+            .traverse { plane =>
+              planners.SimpleFlightPlanner(plane, gameMap.airports, nps.flatten).flatMap { plan =>
+                services.updateFlightPlan(plane.id, plan).flatTap { res => IO { println(res) } } *>
+                  plan.traverse(n => services.nodeToPoint(n).map(point => NodePoint(n, point.getOrElse(Point(0, 0)))))
+              }
             }
-          }
-        else IO.unit
+            .map(prop => (state, prop))
+        else IO.pure(state, Seq.empty[Seq[NodePoint]])
       }
-      .evalTap { state =>
-        services.setState(UIState(state.planes.values.toSeq))
+      .evalTap { (state, proposed) =>
+        services.setState(UIState(state.planes.values.toSeq), proposed)
       }
       .compile
       .drain

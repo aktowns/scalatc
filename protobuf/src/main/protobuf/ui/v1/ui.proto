@@ -1,22 +1,29 @@
 syntax = "proto3";
 
-package ui.v1;
-
+import "scalapb/scalapb.proto";
 import "atc/v1/map.proto";
 import "atc/v1/airplane.proto";
 
+package ui.v1;
+
 message UIState { repeated atc.v1.Airplane planes = 1; }
 
-message SetUIStateRequest { UIState state = 1; }
+message Proposed { repeated NodePoint path = 1; }
+
+message SetUIStateRequest {
+  UIState state = 1 [ (scalapb.field).required = true ];
+  repeated Proposed proposed = 2;
+}
+
 message SetUIStateResponse {}
 
 message NodePoint {
-  atc.v1.Node node = 1;
-  atc.v1.Point point = 2;
+  atc.v1.Node node = 1 [ (scalapb.field).required = true ];
+  atc.v1.Point point = 2 [ (scalapb.field).required = true ];
 }
 
 message SetMapRequest {
-  atc.v1.Map map = 1;
+  atc.v1.Map map = 1 [ (scalapb.field).required = true ];
   repeated NodePoint lookup = 2;
 }
 message SetMapResponse {}

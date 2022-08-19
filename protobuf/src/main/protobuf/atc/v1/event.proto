@@ -10,13 +10,9 @@ message AirplaneCollided {
   string id2 = 2;
 }
 
-message AirplaneDetected {
-  Airplane airplane = 1;
-}
+message AirplaneDetected { Airplane airplane = 1; }
 
-message AirplaneLanded {
-  string id = 1;
-}
+message AirplaneLanded { string id = 1; }
 
 message AirplaneMoved {
   string id = 1;
@@ -28,17 +24,11 @@ message FlightPlanUpdated {
   repeated Node flight_plan = 2;
 }
 
-message LandingAborted {
-  string id = 1;
-}
+message LandingAborted { string id = 1; }
 
-message GameStarted {
-  Map map = 1;
-}
+message GameStarted { Map map = 1; }
 
-message GameStopped {
-  uint32 score = 1;
-}
+message GameStopped { uint32 score = 1; }
 
 message StreamRequest {}
 

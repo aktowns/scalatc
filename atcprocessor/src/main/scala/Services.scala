@@ -55,15 +55,15 @@ extension (services: Services[IO])
   def setMap(gameMap: Map, nodePoints: Seq[NodePoint]): IO[Unit] =
     services.uiService
       .setMap(
-        SetMapRequest(Some(gameMap), nodePoints),
+        SetMapRequest(gameMap, nodePoints),
         new Metadata()
       )
       .void
 
-  def setState(state: UIState): IO[Unit] =
+  def setState(state: UIState, proposed: Seq[Seq[NodePoint]]): IO[Unit] =
     services.uiService
       .setUIState(
-        SetUIStateRequest(Some(state)),
+        SetUIStateRequest(state, proposed.map(p => Proposed(p))),
         new Metadata()
       )
       .void
@@ -76,13 +76,12 @@ extension (services: Services[IO])
       )
       .map(_.airplane)
 
-  def updateFlightPlan(id: String, flightPlan: Seq[Node]): IO[Unit] =
+  def updateFlightPlan(id: String, flightPlan: Seq[Node]): IO[UpdateFlightPlanResponse] =
     services.airplaneService
       .updateFlightPlan(
         UpdateFlightPlanRequest(id, flightPlan),
         new Metadata()
       )
-      .void
 
   def eventStream: fs2.Stream[IO, StreamResponse.Event] =
     services.eventService

@@ -1,3 +1,5 @@
+package planners
+
 import cats.effect.IO
 import atc.v1.{Airplane, Airport, Node, Point}
 import ui.v1.NodePoint
@@ -31,32 +33,36 @@ object SimpleFlightPlanner:
       s"Flight ${airplane.id} is looking to go to ${airplane.tag} airport"
     )
 
-    val lookupPoint = grid.map(np => (np.point.get, np.node.get)).toMap
+    val lookupPoint = grid.map(np => (np.point, np.node)).toMap
     val lookupNode: Map[(Int, Int), Point] =
       grid
-        .map(np =>
-          ((np.node.get.latitude, np.node.get.longitude), np.point.get)
-        )
+        .map(np => ((np.node.latitude, np.node.longitude), np.point))
         .toMap
-    val targetAirport = airports.find(_.tag == airplane.tag).get
+    val targetAirport = airports.find(_.tag == airplane.tag).getOrElse(Airport.defaultInstance)
 
     // val cX = lookupPoint.keys.minBy(v => math.abs(v.x - airplane.point.get.x))
     // val cY = lookupPoint.keys.minBy(v => math.abs(v.y - airplane.point.get.y))
 
-    val start = airplane.point.get
+    val start = airplane.point.getOrElse(Point.defaultInstance)
+    val end = lookupNode(
+      (
+        targetAirport.node.getOrElse(Node.defaultInstance).latitude,
+        targetAirport.node.getOrElse(Node.defaultInstance).longitude
+      )
+    )
 
-    val TQ = if airplane.tag.isTagBlue then 1 else 3
-    val end =
-      if quadrant(start) == TQ then
-        println(s"Flight ${airplane.id} is in ${TQ} going to airport")
-        lookupNode(
-          (targetAirport.node.get.latitude, targetAirport.node.get.longitude)
-        )
-      else
-        println(s"Flight ${airplane.id} is being redirected to ${TQ}")
-        val Q3 = lookupNode((-1, -11))
-        val Q1 = lookupNode((1, 11))
-        if TQ == 3 then Q3 else Q1
+    // val TQ = if airplane.tag.isTagBlue then 1 else 3
+    // val end =
+    //   if quadrant(start) == TQ then
+    //     println(s"Flight ${airplane.id} is in ${TQ} going to airport")
+    //     lookupNode(
+    //       (targetAirport.node.get.latitude, targetAirport.node.get.longitude)
+    //     )
+    //   else
+    //     println(s"Flight ${airplane.id} is being redirected to ${TQ}")
+    //     val Q3 = lookupNode((-1, -11))
+    //     val Q1 = lookupNode((1, 11))
+    //     if TQ == 3 then Q3 else Q1
 
     println(
       s"Flight ${airplane.id} is ${distance(start, end)} points from target"
@@ -66,15 +72,19 @@ object SimpleFlightPlanner:
     // How many steps in point space
     val psteps = steps.foldLeft(Seq(start)) { (points, step) =>
       // Each stop we should be able to close both x,y
-      val nx =
-        if points.last.x == end.x then points.last.x
-        else if points.last.x < end.x then points.last.x + 1
-        else points.last.x - 1
-      val ny =
-        if points.last.y == end.y then points.last.y
-        else if points.last.y < end.y then points.last.y + 1
-        else points.last.y - 1
-
+      val (nx, ny) = points.lastOption
+        .map { lastPoint =>
+          val nx =
+            if lastPoint.x == end.x then lastPoint.x
+            else if lastPoint.x < end.x then lastPoint.x + 1
+            else lastPoint.x - 1
+          val ny =
+            if lastPoint.y == end.y then lastPoint.y
+            else if lastPoint.y < end.y then lastPoint.y + 1
+            else lastPoint.y - 1
+          (nx, ny)
+        }
+        .getOrElse((0, 0))
       val candidate = Point(nx, ny)
 
       // lookupPoint.get(candidate).map(_.restricted).getOrElse(true)

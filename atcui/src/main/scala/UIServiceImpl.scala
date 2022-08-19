@@ -2,18 +2,18 @@ import ui.v1.*
 import scala.concurrent.Future
 import io.grpc.ServerBuilder
 
-class UIServiceImpl(using ec: scala.concurrent.ExecutionContext)
-    extends UIServiceGrpc.UIService:
+class UIServiceImpl(using ec: scala.concurrent.ExecutionContext) extends UIServiceGrpc.UIService:
   override def setMap(request: SetMapRequest): Future[SetMapResponse] =
     println("Updating map")
     WindowState.setNodePoints(Some(request.lookup))
-    WindowState.setGameMap(request.map)
+    WindowState.setGameMap(Some(request.map))
     Future.successful(SetMapResponse.defaultInstance)
 
   override def setUIState(
       request: SetUIStateRequest
   ): Future[SetUIStateResponse] =
-    WindowState.setGameState(request.state)
+    WindowState.setGameState(Some(request.state))
+    WindowState.setProposedPoints(Some(request.proposed.map(_.path)))
     Future.successful(SetUIStateResponse.defaultInstance)
 
 object UIServiceImpl:
