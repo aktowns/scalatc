@@ -110,6 +110,8 @@ object AtcWindow extends JFXApp3:
     stage = new JFXApp3.PrimaryStage {
       title.value = "Scalatc Viewer"
       resizable = false
+      x = 50
+      y = 50
       scene = new Scene {
         fill = Color.rgb(38, 38, 38)
         content = Seq(

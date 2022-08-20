@@ -11,7 +11,9 @@ lazy val commonSettings = Seq(
     "org.typelevel" %% "cats-mtl" % "1.3.0",
     "org.typelevel" %% "log4cats-core" % "2.3.2",
     "org.typelevel" %% "log4cats-slf4j" % "2.3.2",
-    "org.typelevel" %% "mouse" % "1.1.0"
+    "org.typelevel" %% "mouse" % "1.1.0",
+    "ch.qos.logback" % "logback-core" % "1.2.11",
+    "ch.qos.logback" % "logback-classic" % "1.2.11"
   ),
   scalacOptions ++= Seq("-feature")
 )
@@ -57,8 +59,7 @@ lazy val atcprocessor = project
     commonSettings,
     name := "atc-control",
     fork := true,
-    wartremoverErrors ++= Warts.unsafe,
-    wartremoverExcluded += sourceManaged.value / "core" / "shared" / "src",
+    wartremoverWarnings ++= Warts.unsafe,
     libraryDependencies ++= Seq(
       "co.fs2" %% "fs2-core" % "3.2.12",
       "dev.optics" %% "monocle-core" % "3.1.0",

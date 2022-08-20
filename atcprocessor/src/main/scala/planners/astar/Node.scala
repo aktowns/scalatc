@@ -1,5 +1,9 @@
 package planners.astar
 
+import planners.Position
+
+import cats.Order
+
 case class Node(
     pos: Position,
     restricted: Boolean,
@@ -18,3 +22,10 @@ case class Node(
     if heuristic == 0 then updated.copy(heuristic = hh) else updated
 
   def compare(that: Node): Int = that.fScore.compare(fScore)
+
+object Node:
+  def fromDefaults(pos: Position, restricted: Boolean) =
+    Node(pos, restricted, 0, 0, false, false, None)
+
+given ordNode: Order[Node] with
+  override def compare(x: Node, y: Node): Int = x.fScore.compare(y.fScore)

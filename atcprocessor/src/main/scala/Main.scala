@@ -7,6 +7,11 @@ import io.grpc.{ManagedChannel, Metadata}
 import monocle.syntax.all.*
 import scala.concurrent.duration.*
 
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+
+import cats.data.EitherT
+
 import atc.v1.*
 import ui.v1.*
 
@@ -18,6 +23,9 @@ object State:
   def empty: State = State(scala.collection.immutable.Map.empty, true)
 
 object Main extends IOApp.Simple:
+  // TODO: Propper log rigging?
+  implicit def unsafeLogger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
+
   private def processEvents(state: State, event: StreamResponse.Event): State =
     event match
       case StreamResponse.Event.Empty                   => state
@@ -39,6 +47,26 @@ object Main extends IOApp.Simple:
           .replace(value.flightPlan)
       case StreamResponse.Event.LandingAborted(value) => state
 
+  def runFlightPlanner(
+      airplane: Airplane,
+      airports: Seq[Airport],
+      grid: Seq[NodePoint],
+      services: Services[IO]
+  ): IO[Vector[NodePoint]] =
+    for
+      maybePlan <- planners.SimpleFlightPlanner
+        .apply[[X] =>> EitherT[IO, planners.PlannerError, X]](airplane, airports.toVector, grid.toVector)
+        .value
+      plan <- maybePlan.fold(
+        err => IO.raiseError(new RuntimeException(s"Unhandled planner error: ${err}")),
+        _.pure[IO]
+      ) // TODO: Actually do something with errors?!
+      _ <- services.updateFlightPlan(airplane.id, plan)
+      proposedPlan <- plan.traverse(n =>
+        services.nodeToPoint(n).map(point => NodePoint(n, point.getOrElse(Point(0, 0))))
+      )
+    yield proposedPlan
+
   def runProgram(services: Services[IO]): IO[Unit] = for {
     version <- services.getVersion
     gameMap <- services.getMap.flatMap(_.fold(IO.raiseError(new RuntimeException("Failed to get map")))(_.pure))
@@ -56,12 +84,7 @@ object Main extends IOApp.Simple:
       .evalMap { state =>
         if state.isRunning then
           state.planes.values.toSeq
-            .traverse { plane =>
-              planners.SimpleFlightPlanner(plane, gameMap.airports, nps.flatten).flatMap { plan =>
-                services.updateFlightPlan(plane.id, plan).flatTap { res => IO { println(res) } } *>
-                  plan.traverse(n => services.nodeToPoint(n).map(point => NodePoint(n, point.getOrElse(Point(0, 0)))))
-              }
-            }
+            .traverse { plane => runFlightPlanner(plane, gameMap.airports, nps.flatten, services) }
             .map(prop => (state, prop))
         else IO.pure(state, Seq.empty[Seq[NodePoint]])
       }

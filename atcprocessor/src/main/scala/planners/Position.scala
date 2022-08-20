@@ -1,4 +1,4 @@
-package planners.astar
+package planners
 
 import atc.v1 as atc
 
