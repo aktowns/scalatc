@@ -48,31 +48,51 @@ def path(node: Node): List[Node] =
 def manhattan(pos1: Position, pos2: Position): Int =
   math.abs(pos2.x - pos1.x) + math.abs(pos2.y - pos1.y)
 
-
-def whileDefined[M[_]: Monad, A, B](m: M[Option[A]], f: A => M[B]): M[B] = 
-  m.flatMap {
-    case Some(a) => f(a) <* whileDefined(m, f)
-    case None => Monad[M].unit
-  }
-
-extension [F[_]: Monad, A](p: F[Option[A]])
-  def whileM[G[_], B](body: A => F[B])(implicit G: Alternative[G]): F[G[B]] = {
-     val b = Eval.later(body)
-     p.tailRecM[G[A], G[A]](G.empty)(xs =>
-       p.flatMap {
-        case Some(a) => b.value(a).map { bv => Left(G.appendK(xs, bv)) }
-        case None => p.pure(Right(xs))
-       }
-      //  ifM(p)(
-      //    ifTrue = {
-      //      map(b.value) { bv =>
-      //        Left(G.appendK(xs, bv))
-      //      }
-      //    },
-      //    ifFalse = pure(Right(xs))
-      //  )
-     )
-  }
+// def whileSome[M[_]: Monad, A, B](m: M[Option[A]], f: A => M[B]): M[B] =
+//   for
+//     a <- m
+//     r <- a match
+//            case Some(a) => f(a)
+//            case None => ???
+//   yield ???
+//
+//
+//
+// def foldWhileM[G[_], S](initial: S)(f: (S, A) => G[Option[S]])(implicit F: Foldable[F], G: Monad[G]): G[S] =
+//   G.tailRecM((initial, FoldableStream.from(fa))) {
+//     case (s, FoldableStream.Empty)      => G.pure(Right(s))
+//     case (s, FoldableStream.Cons(h, t)) =>
+//       G.map(f(s, h)) {
+//         case None     => Right(s)
+//         case Some(s1) => Left((s1, t.value))
+//       }
+//   }
+//
+//
+// def whileDefined[M[_]: Monad, A, B](m: M[Option[A]], f: A => M[B]): M[B] =
+//   m.flatMap {
+//     case Some(a) => f(a) <* whileDefined(m, f)
+//     case None => Monad[M].unit
+//   }
+//
+// extension [F[_]: Monad, A](p: F[Option[A]])
+//   def whileM[G[_], B](body: A => F[B])(implicit G: Alternative[G]): F[G[B]] = {
+//      val b = Eval.later(body)
+//      p.tailRecM[G[A], G[A]](G.empty[B])((xs: G[B]) =>
+//        p.flatMap {
+//         case Some(a) => b.value(a).map { bv => Left(G.appendK(xs, bv)) }
+//         case None => p.pure(Right(xs))
+//        }
+//       //  ifM(p)(
+//       //    ifTrue = {
+//       //      map(b.value) { bv =>
+//       //        Left(G.appendK(xs, bv))
+//       //      }
+//       //    },
+//       //    ifFalse = pure(Right(xs))
+//       //  )
+//      )
+//   }
 
 object AStarPlanner extends Planner:
   import cats.effect.unsafe.implicits.global
@@ -89,8 +109,30 @@ object AStarPlanner extends Planner:
     for
       queue <- PQueue.unbounded[IO, Node]
       _ <- queue.offer(graph.nodes(startPosition))
-      _ <- IO.pure(Some(1)).
-      _ <- IO { println("stop folding damn it") }
+      results <- queue.tryTake.flatMap {
+        // Nothing left in the queue
+        case None => IO(Some(Nil))
+        // result has been found, return traced path
+        case Some(node) if node == end =>
+          IO(Some(path(node).reverse.map(_.pos)))
+        // move node from open to closed, process each of its neighbors
+        case Some(node) =>
+          for
+            _ <- queue.offer(node.copy(closed = true))
+            res <- graph.neighbours(node).filter(neighbour => !neighbour.restricted && !neighbour.closed).traverse {
+              neighbour =>
+                val gScore = node.gScore + 1
+                val beenVisited = neighbour.visited
+
+                if !beenVisited || gScore < neighbour.g then
+                  neighbour.parent = Some(node)
+                  neighbour.update(gScore, manhattan(neighbour.pos, end.pos))
+                  if !beenVisited then graph.offer(neighbour)
+                  else IO(None)
+                else IO(None)
+            }
+          yield res
+      }.untilDefinedM
     yield ???
 
     ???
