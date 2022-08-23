@@ -54,7 +54,7 @@ object Main extends IOApp.Simple:
       services: Services[IO]
   ): IO[Vector[NodePoint]] =
     for
-      maybePlan <- planners.SimpleFlightPlanner
+      maybePlan <- planners.astar.AStarPlanner
         .apply[[X] =>> EitherT[IO, planners.PlannerError, X]](airplane, airports.toVector, grid.toVector)
         .value
       plan <- maybePlan.fold(

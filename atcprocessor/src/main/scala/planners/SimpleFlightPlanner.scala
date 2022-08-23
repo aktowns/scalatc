@@ -3,8 +3,11 @@ package planners
 import cats.effect.IO
 import atc.v1.{Airplane, Airport, Node, Point}
 import ui.v1.NodePoint
-import cats.Order
+import cats.{Order, Monad}
 import cats.implicits.*
+
+import cats.effect.Sync
+import org.typelevel.log4cats.Logger
 
 // |---------(+)----------
 // |    2     |     1
@@ -17,7 +20,11 @@ import cats.implicits.*
 // Very basic planner, try to go from plane location directly to the target airport
 object SimpleFlightPlanner extends Planner:
 
-  override def search(startPosition: Position, endPosition: Position, grid: Map[Position, Boolean]): Vector[Position] =
+  override def search[F[_]: Sync: Logger](
+      startPosition: Position,
+      endPosition: Position,
+      grid: Map[Position, Boolean]
+  ): F[Vector[Position]] =
     val steps = Seq.range[Int](0, distance(startPosition, endPosition).toInt)
 
     val psteps = steps.foldLeft(Seq(startPosition)) { (points, step) =>
@@ -39,7 +46,7 @@ object SimpleFlightPlanner extends Planner:
       points :+ Position(nx, ny)
     }
 
-    psteps.distinct.toVector
+    Monad[F].pure(psteps.distinct.toVector)
 
   // def quadrant(a: Point): Int =
   //   if a.x > 0 && a.y > 0 then 1

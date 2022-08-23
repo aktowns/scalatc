@@ -32,9 +32,13 @@ trait Planner:
 
       normalizedGrid = grid.map((np: ui.NodePoint) => (Position.fromModel(np.node), np.node.restricted)).toMap
 
-      route = search(Position.fromModel(startPosition), Position.fromModel(endPosition), normalizedGrid)
+      route <- search(Position.fromModel(startPosition), Position.fromModel(endPosition), normalizedGrid)
 
       _ <- info"Flight ${airplane.id} route is ${route.length}"
     yield startPosition +: route.map(p => atc.Node(-p.y, -p.x, false))
 
-  def search(startPosition: Position, endPosition: Position, grid: Map[Position, Boolean]): Vector[Position]
+  def search[F[_]: Sync: Logger](
+      startPosition: Position,
+      endPosition: Position,
+      grid: Map[Position, Boolean]
+  ): F[Vector[Position]]
